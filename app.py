@@ -20,6 +20,23 @@ from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
 
 # ── query handler ─────────────────────────────────────────────────────────────
 
+def _format_listing(item: dict, relaxed: dict | None = None) -> str:
+    """Format the selected listing dict into a readable block for the UI panel."""
+    lines = []
+    if relaxed:
+        lines.append("(No exact match — showing the closest result from a broadened search.)\n")
+    lines.append(item["title"])
+    lines.append(f"${item['price']:.2f}  ·  {item['platform']}")
+    lines.append(f"Size: {item['size']}  ·  Condition: {item['condition']}")
+    lines.append(f"Brand: {item.get('brand') or '—'}")
+    tags = ", ".join(item.get("style_tags", []))
+    if tags:
+        lines.append(f"Style: {tags}")
+    lines.append("")
+    lines.append(item["description"])
+    return "\n".join(lines)
+
+
 def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
     """
     Called by Gradio when the user submits a query.
@@ -43,8 +60,26 @@ def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
            string and return it along with session["outfit_suggestion"] and
            session["fit_card"].
     """
-    # TODO: implement this function
-    return "Agent not yet implemented.", "", ""
+    # 1. Guard against an empty query.
+    if not user_query or not user_query.strip():
+        return "Please enter a search query (e.g. 'vintage graphic tee under $30').", "", ""
+
+    # 2. Select the wardrobe based on the radio choice.
+    wardrobe = (
+        get_empty_wardrobe() if wardrobe_choice == "Empty wardrobe (new user)"
+        else get_example_wardrobe()
+    )
+
+    # 3. Run the agent.
+    session = run_agent(user_query, wardrobe)
+
+    # 4. Error path → message in panel 1, empty for the others.
+    if session["error"]:
+        return session["error"], "", ""
+
+    # 5. Success → format selected_item + pass through the other two session fields.
+    listing_text = _format_listing(session["selected_item"], session.get("relaxed"))
+    return listing_text, session["outfit_suggestion"], session["fit_card"]
 
 
 # ── interface ─────────────────────────────────────────────────────────────────
